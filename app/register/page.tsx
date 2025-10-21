@@ -11,10 +11,6 @@ export default function RegisterPage() {
   const [imageFile, setImageFile] = useState<File | null>(null);
   const [imagePreview, setImagePreview] = useState<string | null>(null);
 
-  /**
-   * Handles the change event for the image file input.
-   * @param {React.ChangeEvent<HTMLInputElement>} e The file input change event.
-   */
   const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
@@ -164,5 +160,4 @@ export default function RegisterPage() {
     </div>
     
   );
-
 }

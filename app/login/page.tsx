@@ -1,22 +1,67 @@
 "use client";
 
-import Link from 'next/link';
-import { useState } from 'react';
-import{ useRouter } from 'next/navigation';
+import { useState } from "react";
+import { useRouter } from "next/navigation";
+import Link from "next/link";
+import { supabase } from "@/lib/supabaseClient";
 
-/**
- * @fileoverview This is the Login page component for the Food Tracker application.
- * It's built with Next.js using TypeScript and styled with Tailwind CSS.
- */
+export default function Page() {
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [isLoading, setIsLoading] = useState(false);
 
-export default function LoginPage() {
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
+  const router = useRouter();
 
-    const router = useRouter();
-  const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
+  const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
-     router.push('/dashboard');
+    setIsLoading(true);
+
+    //* AI GENERATED CODE
+    try {
+      // Check if user exists in custom user_tb table
+      const { data, error } = await supabase
+        .from("user_tb")
+        .select("*")
+        .eq("email", email)
+        .eq("password", password)
+        .single();
+
+      if (error) {
+        if (error.code === "PGRST116") {
+          // No rows returned - user not found or wrong credentials
+          alert("อีเมลหรือรหัสผ่านไม่ถูกต้อง");
+        } else {
+          alert("พบปัญหาในการล็อกอิน");
+          console.log(error.message);
+        }
+        return;
+      }
+
+      if (data) {
+        // Login successful
+        alert("ล็อกอินสำเร็จ");
+
+        // Store user data in localStorage for session management
+        localStorage.setItem(
+          "user",
+          JSON.stringify({
+            id: data.id,
+            fullname: data.fullname,
+            email: data.email,
+            gender: data.gender,
+            user_image_url: data.user_image_url,
+          })
+        );
+
+        // Redirect to dashboard
+        router.push("/dashboard");
+      }
+    } catch (error) {
+      console.error("Login error:", error);
+      alert("เกิดข้อผิดพลาดในการล็อกอิน");
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   return (
@@ -29,7 +74,10 @@ export default function LoginPage() {
         <form onSubmit={handleSubmit} className="space-y-6">
           {/* Email Input */}
           <div>
-            <label className="block text-gray-700 font-semibold mb-2" htmlFor="email">
+            <label
+              className="block text-gray-700 font-semibold mb-2"
+              htmlFor="email"
+            >
               อีเมล
             </label>
             <input
@@ -46,7 +94,10 @@ export default function LoginPage() {
 
           {/* Password Input */}
           <div>
-            <label className="block text-gray-700 font-semibold mb-2" htmlFor="password">
+            <label
+              className="block text-gray-700 font-semibold mb-2"
+              htmlFor="password"
+            >
               รหัสผ่าน
             </label>
             <input
@@ -64,6 +115,7 @@ export default function LoginPage() {
           {/* Login Button */}
           <button
             type="submit"
+            disabled={isLoading}
             className="w-full bg-purple-600 text-white font-bold py-3 px-6 rounded-full shadow-lg hover:bg-purple-700 transition duration-300 ease-in-out transform hover:scale-105"
           >
             Login
@@ -72,7 +124,7 @@ export default function LoginPage() {
 
         {/* Register Link */}
         <div className="mt-6 text-center text-gray-600">
-          Don&apos;t have an account?{' '}
+          Don&apos;t have an account?{" "}
           <Link href="/register">
             <span className="text-purple-600 hover:text-purple-800 font-semibold transition duration-200">
               Register here

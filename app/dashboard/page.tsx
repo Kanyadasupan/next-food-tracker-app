@@ -1,70 +1,113 @@
 "use client";
 
-import { useState } from 'react';
-import Link from 'next/link';
+import React, { useMemo, useState, useEffect } from "react";
+import { supabase } from "@/lib/supabaseClient";
+import Image from "next/image";
+import Link from "next/link";
+import { useRouter } from "next/navigation";
 
-/**
- * @fileoverview The Dashboard page for the Food Tracker application.
- * This component displays a list of food items with pagination and search functionality.
- */
+interface Food {
+  id: number;
+  foodname: string;
+  meal: string;
+  fooddate_at: string;
+  food_image_url: string | null;
+  created_at: string;
+  update_at: string;
+}
 
-// Mock data for demonstration purposes. In a real application, this would come from an API or database.
-const mockFoods = [
-  { id: 1, name: 'ส้มตำ', meal: 'มื้อกลางวัน', image: 'https://placehold.co/50x50/f0f0f0/666?text=ตำ', date: '2023-10-27' },
-  { id: 2, name: 'ผัดไทย', meal: 'มื้อเย็น', image: 'https://placehold.co/50x50/f0f0f0/666?text=ผัด', date: '2023-10-26' },
-  { id: 3, name: 'ข้าวผัด', meal: 'มื้อกลางวัน', image: 'https://placehold.co/50x50/f0f0f0/666?text=ข้าว', date: '2023-10-25' },
-  { id: 4, name: 'ต้มยำกุ้ง', meal: 'มื้อเย็น', image: 'https://placehold.co/50x50/f0f0f0/666?text=ต้ม', date: '2023-10-24' },
-  { id: 5, name: 'ก๋วยเตี๋ยว', meal: 'มื้อกลางวัน', image: 'https://placehold.co/50x50/f0f0f0/666?text=ก๋วย', date: '2023-10-23' },
-  { id: 6, name: 'แกงเขียวหวาน', meal: 'มื้อเย็น', image: 'https://placehold.co/50x50/f0f0f0/666?text=แกง', date: '2023-10-22' },
-  { id: 7, name: 'ไข่เจียว', meal: 'มื้อเช้า', image: 'https://placehold.co/50x50/f0f0f0/666?text=ไข่', date: '2023-10-21' },
-  { id: 8, name: 'ผัดกะเพรา', meal: 'มื้อกลางวัน', image: 'https://placehold.co/50x50/f0f0f0/666?text=กระ', date: '2023-10-20' },
-  { id: 9, name: 'ยำวุ้นเส้น', meal: 'มื้อเย็น', image: 'https://placehold.co/50x50/f0f0f0/666?text=ยำ', date: '2023-10-19' },
-  { id: 10, name: 'ข้าวเหนียวมะม่วง', meal: 'ของว่าง', image: 'https://placehold.co/50x50/f0f0f0/666?text=มะ', date: '2023-10-18' },
-];
-
-const ITEMS_PER_PAGE = 5;
-
-export default function DashboardPage() {
+export default function Page() {
+  const [foods, setFoods] = useState<Food[]>([]);
+  const [searchTerm, setSearchTerm] = useState("");
   const [currentPage, setCurrentPage] = useState(1);
-  const [searchTerm, setSearchTerm] = useState('');
+  const itemsPerPage = 5;
+  const router = useRouter();
+  useEffect(() => {
+    const userData = localStorage.getItem("user");
+    if (!userData) {
+      alert("กรุณาเข้าสู่ระบบก่อน");
+      router.push("/login");
+      return;
+    }
+  }, [router]);
 
-  // Filter food items based on the search term
-  const filteredFoods = mockFoods.filter(food =>
-    food.name.toLowerCase().includes(searchTerm.toLowerCase())
-  );
+  useEffect(() => {
+    async function fetchFoods() {
+      const { data, error } = await supabase
+        .from("food_tb")
+        .select(
+          "id, foodname, meal, fooddate_at, food_image_url, created_at, update_at",
+        )
+        .order("created_at", { ascending: false });
 
-  // Calculate the food items to display on the current page
-  const startIndex = (currentPage - 1) * ITEMS_PER_PAGE;
-  const endIndex = startIndex + ITEMS_PER_PAGE;
-  const foodsToDisplay = filteredFoods.slice(startIndex, endIndex);
+      //หลังจากดึงข้อมูลมาตรวจสอบ error
+      if (error) {
+        alert("พบปัญหาในการดึงข้อมูลจาก");
+        console.log(error.message);
+        return;
+      }
+      //ถ้าไม่มี error ให้เก็บข้อมูลที่ดึงมาไว้ใน state tasks
+      if (data) {
+        setFoods(data as Food[]);
+      }
+    }
 
-  const totalPages = Math.ceil(filteredFoods.length / ITEMS_PER_PAGE);
+    fetchFoods();
+  }, []);
+  const filteredFoods = useMemo(() => {
+    return foods.filter((food) =>
+      food.foodname.toLowerCase().includes(searchTerm.toLowerCase()),
+    );
+  }, [foods, searchTerm]);
 
-  /**
-   * Handles the click event for pagination.
-   * @param {number} pageNumber The page number to navigate to.
-   */
-  const handlePageChange = (pageNumber: number) => {
-    setCurrentPage(pageNumber);
+  //* calculate total pages and current foods
+  const totalPages = Math.ceil(filteredFoods.length / itemsPerPage);
+
+  //* get current foods
+  const currentFoods = useMemo(() => {
+    const startIndex = (currentPage - 1) * itemsPerPage;
+    return filteredFoods.slice(startIndex, startIndex + itemsPerPage);
+  }, [currentPage, filteredFoods]);
+
+  //* handle search
+  const handleSearch = () => {
+    setCurrentPage(1); // Reset to first page on new search
   };
 
-  /**
-   * Handles the action for editing a food item.
-   * @param {number} id The ID of the food item to edit.
-   */
-  const handleEdit = (id: number) => {
-    // TODO: Implement edit functionality. Maybe navigate to a page with a form.
-    console.log(`Edit item with ID: ${id}`);
-  };
+  async function deleteFood(id: number, image_url: string) {
+    //แสดงconfirm dialogเพื่อให้ผู้ใช้ยืนยันการลบข้อมูล
+    if (confirm("คุณต้องการลบรายการอาหารนี้ใช่หรือไม่?")) {
+      //ลบรูปออกจาก stroage (ถ้ามีรูป)
+      if (image_url != "") {
+        //เอาเฉพาะชื่อรูปจาก image_url เก็บในตัวแปล
+        const image_name = image_url.split("/").pop() as string;
+        //ลบรูปออกจาก storage
+        const { data, error } = await supabase.storage
+          .from("food_bk")
+          .remove([image_name]);
+        //ตรวจสอบ error
+        if (error) {
+          alert("พบปัญหาในการลบรูปภาพ");
+          console.log(error.message);
+          return;
+        }
+      }
+      //ลบข้อมูลออกจากตาราง supabase
+      const { data, error } = await supabase
+        .from("food_tb")
+        .delete()
+        .eq("id", id);
 
-  /**
-   * Handles the action for deleting a food item.
-   * @param {number} id The ID of the food item to delete.
-   */
-  const handleDelete = (id: number) => {
-    // TODO: Implement delete functionality.
-    console.log(`Delete item with ID: ${id}`);
-  };
+      //ตรวจสอบ error
+      if (error) {
+        alert("พบปัญหาในการลบข้อมูล");
+        console.log(error.message);
+        return;
+      }
+      //ลบข้อมูลออกจากรายการที่แสดงบนหน้าจอ
+      setFoods(foods.filter((food) => food.id !== id));
+    }
+  }
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-300 via-cyan-400 to-green-500 p-4 sm:p-8">
@@ -77,15 +120,28 @@ export default function DashboardPage() {
         <div className="flex flex-col sm:flex-row items-center justify-between mb-8 space-y-4 sm:space-y-0 sm:space-x-4">
           <div className="w-full sm:w-2/3">
             <input
+              suppressHydrationWarning
               type="text"
               placeholder="ค้นหาชื่ออาหาร..."
               value={searchTerm}
               onChange={(e) => {
                 setSearchTerm(e.target.value);
-                setCurrentPage(1); // Reset to first page on new search
+                handleSearch();
               }}
               className="w-full px-5 py-3 rounded-full border-2 border-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-500 transition duration-200"
             />
+          </div>
+          <div className="absolute top-4 right-7 ">
+            <Link href="/profile" className="inline-flex items-center">
+              <button
+                aria-label="โปรไฟล์"
+                className="w-full sm:w-auto bg-gray-600 text-white font-bold py-3 px-8 rounded-full shadow-lg hover:bg-blue-700 transition duration-300 ease-in-out transform hover:scale-105"
+              >
+                <span className="text-xl font-medium text-white hidden sm:inline">
+                  โปรไฟล์
+                </span>
+              </button>
+            </Link>
           </div>
           <Link href="/addfood">
             <button className="w-full sm:w-auto bg-blue-600 text-white font-bold py-3 px-8 rounded-full shadow-lg hover:bg-blue-700 transition duration-300 ease-in-out transform hover:scale-105">
@@ -99,30 +155,52 @@ export default function DashboardPage() {
           <table className="min-w-full bg-white bg-opacity-90">
             <thead className="bg-blue-600 text-white">
               <tr>
-                <th className="py-3 px-6 text-left text-sm font-semibold">รูปภาพ</th>
-                <th className="py-3 px-6 text-left text-sm font-semibold">ชื่ออาหาร</th>
-                <th className="py-3 px-6 text-left text-sm font-semibold">มื้ออาหาร</th>
-                <th className="py-3 px-6 text-center text-sm font-semibold">การจัดการ</th>
+                <th className="py-3 px-6 text-left text-sm font-semibold">
+                  รูปภาพ
+                </th>
+                <th className="py-3 px-6 text-left text-sm font-semibold">
+                  ชื่ออาหาร
+                </th>
+                <th className="py-3 px-6 text-left text-sm font-semibold">
+                  มื้ออาหาร
+                </th>
+                <th className="py-3 px-6 text-center text-sm font-semibold">
+                  การจัดการ
+                </th>
               </tr>
             </thead>
             <tbody>
-              {foodsToDisplay.length > 0 ? (
-                foodsToDisplay.map((food) => (
-                  <tr key={food.id} className="border-b border-gray-200 hover:bg-gray-100">
+              {currentFoods.length > 0 ? (
+                currentFoods.map((food) => (
+                  <tr
+                    key={food.id}
+                    className="border-b border-gray-200 hover:bg-gray-100"
+                  >
                     <td className="py-3 px-6 whitespace-nowrap">
-                      <img src={food.image} alt={food.name} className="w-10 h-10 rounded-full object-cover" />
+                      <Image
+                        src={food.food_image_url ?? "/placeholder.png"}
+                        alt={food.foodname}
+                        width={40}
+                        height={40}
+                        unoptimized={true}
+                        className="w-10 h-10 rounded-full object-cover"
+                      />
                     </td>
-                    <td className="py-3 px-6 whitespace-nowrap">{food.name}</td>
+                    <td className="py-3 px-6 whitespace-nowrap">
+                      {food.foodname}
+                    </td>
                     <td className="py-3 px-6 whitespace-nowrap">{food.meal}</td>
                     <td className="py-3 px-6 text-center whitespace-nowrap">
                       <button
-                        onClick={() => handleEdit(food.id)}
+                        onClick={() => router.push(`/updatafood/${food.id}`)}
                         className="bg-yellow-500 text-white py-1 px-3 rounded-full text-xs font-bold hover:bg-yellow-600 mr-2"
                       >
                         แก้ไข
                       </button>
                       <button
-                        onClick={() => handleDelete(food.id)}
+                        onClick={() =>
+                          deleteFood(food.id, food.food_image_url ?? "")
+                        }
                         className="bg-red-500 text-white py-1 px-3 rounded-full text-xs font-bold hover:bg-red-600"
                       >
                         ลบ
@@ -147,11 +225,11 @@ export default function DashboardPage() {
             {[...Array(totalPages)].map((_, index) => (
               <button
                 key={index}
-                onClick={() => handlePageChange(index + 1)}
+                onClick={() => setCurrentPage(index + 1)}
                 className={`py-2 px-4 rounded-full font-semibold transition duration-200 ${
                   currentPage === index + 1
-                    ? 'bg-blue-600 text-white shadow-lg'
-                    : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                    ? "bg-blue-600 text-white shadow-lg"
+                    : "bg-gray-200 text-gray-700 hover:bg-gray-300"
                 }`}
               >
                 {index + 1}

@@ -1,86 +1,87 @@
 "use client";
 
-import { useState } from 'react';
-import { useRouter } from 'next/navigation';
-import { FaUpload, FaChevronLeft, FaSave } from 'react-icons/fa';
-import Link from 'next/link';
+import { useState } from "react";
+import Link from "next/link";
+import Image from "next/image";
+import { supabase } from "@/lib/supabaseClient";
+import { useRouter } from "next/navigation";
 
-/**
- * @fileoverview The Add Food page component for the Food Tracker application.
- * This component provides a form to add a new food item to the tracker.
- * It's built with Next.js using TypeScript and styled with Tailwind CSS.
- */
-
-interface FoodItem {
-  name: string;
-  meal: string;
-  date: string;
-  image: string;
-}
-
-export default function AddFoodPage() {
-  const router = useRouter();
-  const [formData, setFormData] = useState<Omit<FoodItem, 'image'>>({
-    name: '',
-    meal: '',
-    date: '',
-  });
-  const [imageFile, setImageFile] = useState<File | null>(null);
+export default function Page() {
+  const [foodname, setFoodName] = useState("");
+  const [meal, setMeal] = useState("");
+  const [date, setDate] = useState("");
+  const [image_File, setImage] = useState<File | null>(null);
   const [imagePreview, setImagePreview] = useState<string | null>(null);
+  const router = useRouter();
 
-  const mealOptions = [
-    { value: '', label: 'เลือกมื้ออาหาร' },
-    { value: 'breakfast', label: 'มื้อเช้า' },
-    { value: 'lunch', label: 'มื้อกลางวัน' },
-    { value: 'dinner', label: 'มื้อเย็น' },
-    { value: 'snack', label: 'ของว่าง' },
-  ];
+ function handleSelecImagePreview(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0] || null;
 
-  /**
-   * Handles changes to the form input fields.
-   * @param {React.ChangeEvent<HTMLInputElement | HTMLSelectElement>} e The change event.
-   */
-  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
-    const { name, value } = e.target;
-    setFormData((prev) => ({ ...prev, [name]: value }));
-  };
-
-  /**
-   * Handles the change event for the image file input.
-   * @param {React.ChangeEvent<HTMLInputElement>} e The file input change event.
-   */
-  const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
+    setImage(file);
     if (file) {
-      setImageFile(file);
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        setImagePreview(reader.result as string);
-      };
-      reader.readAsDataURL(file);
-    } else {
-      setImageFile(null);
-      setImagePreview(null);
+      setImagePreview(URL.createObjectURL(file as Blob));
     }
-  };
-
-  /**
-   * Handles the form submission (currently a placeholder).
-   * @param {React.FormEvent<HTMLFormElement>} e The form submit event.
-   */
-  const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
+  }
+  
+//อัพโหลดรูปภาพและบันทึกข้อมูลลงฐานข้อมูลSupabase
+  async function handleUplodeAndSave(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
-    // TODO: Implement logic to save the food item to a database or state.
-    const newFoodItem: Omit<FoodItem, 'image'> = {
-      ...formData,
-    };
-    console.log('Adding new food item:', newFoodItem);
-    console.log('Image file:', imageFile);
-    
-    // Redirect to the dashboard after submission
-    router.push('/dashboard');
-  };
+    //สร้างตัวแปร image_url เพื่อเก็บ URL ของรูปภาพที่อัพโหลด เพื่อเอาไปบันทึกลงตาราง task_tb
+    let image_url = "";
+    // validate image file
+    if (image_File) {
+      // if have image file, upload to supabase storage
+      // named new file to avoid duplicate file name
+      const new_image_file_name = `${Date.now()}-${image_File.name}`;
 
+      // upload image to supabase storage
+      const { data, error } = await supabase.storage
+        .from("food_bk")
+        .upload(new_image_file_name, image_File);
+
+      // after upload image, check the result
+      // if there is error, show alert and return, if no error, get the image url and stored in variable image_url
+      if (error) {
+        // show alert and return
+        alert("พบปัญหาในการอัพโหลดรูปภาพ กรุณาลองใหม่อีกครั้ง");
+        console.log(error.message);
+        return;
+      } else {
+        // no error, get the image url and stored in variable image_url
+        const { data } = await supabase.storage
+          .from("food_bk")
+          .getPublicUrl(new_image_file_name);
+        image_url = data.publicUrl;
+      }
+    }
+    const {data,error} = await supabase
+      .from('food_tb')
+      .insert({
+        foodname: foodname,
+        meal: meal,
+        fooddate_at: date,
+        food_image_url: image_url,
+
+      })
+
+      if(error){
+        alert('พบปัญหาในการบันทึกข้อมูล');
+        console.log(error.message);
+        return;
+      }else{
+        alert('บันทึกข้อมูลเรียบร้อยแล้ว');
+        //เคลียตัวแปร state ต่างๆให้เป็นค่าว่างเหมือนเดิม
+        setFoodName("");
+        setMeal("");
+        setImage(null);
+        setDate("");
+        setImagePreview("");
+        image_url = "";
+        // redirect to all task page
+        router.push('/dashboard');
+      }
+  
+  }
   return (
     <div className="flex items-center justify-center min-h-screen bg-gradient-to-br from-green-300 via-teal-400 to-cyan-500 p-4">
       <div className="bg-white bg-opacity-80 backdrop-filter backdrop-blur-sm p-8 md:p-12 rounded-3xl shadow-2xl max-w-lg w-full">
@@ -88,7 +89,7 @@ export default function AddFoodPage() {
           เพิ่มอาหาร
         </h1>
 
-        <form onSubmit={handleSubmit} className="space-y-6">
+        <form onSubmit={handleUplodeAndSave} className="space-y-6" suppressHydrationWarning>
           {/* Food Name Input */}
           <div>
             <label className="block text-gray-700 font-semibold mb-2" htmlFor="name">
@@ -98,8 +99,8 @@ export default function AddFoodPage() {
               type="text"
               id="name"
               name="name"
-              value={formData.name}
-              onChange={handleInputChange}
+              value={foodname}
+              onChange={(e) => setFoodName(e.target.value)}
               className="w-full px-4 py-3 rounded-lg border-2 border-gray-300 focus:outline-none focus:ring-2 focus:ring-green-500 transition duration-200"
               placeholder="กรุณาป้อนชื่ออาหาร"
               required
@@ -114,16 +115,18 @@ export default function AddFoodPage() {
             <select
               id="meal"
               name="meal"
-              value={formData.meal}
-              onChange={handleInputChange}
+              value={meal}
+              onChange={(e) => setMeal(e.target.value)}
               className="w-full px-4 py-3 rounded-lg border-2 border-gray-300 focus:outline-none focus:ring-2 focus:ring-green-500 transition duration-200"
               required
             >
-              {mealOptions.map((option) => (
-                <option key={option.value} value={option.value}>
-                  {option.label}
-                </option>
-              ))}
+              <option value="" disabled>
+              Select Meal
+            </option>
+            <option value="Breakfast">เมื้อเช้า</option>
+            <option value="Lunch">มื้อกลางวัน</option>
+            <option value="Dinner">มื้อเย็น</option>
+            <option value="Snack">ขนม</option>
             </select>
           </div>
 
@@ -136,43 +139,41 @@ export default function AddFoodPage() {
               type="date"
               id="date"
               name="date"
-              value={formData.date}
-              onChange={handleInputChange}
+              value={date}
+              onChange={(e) => setDate(e.target.value)}
               className="w-full px-4 py-3 rounded-lg border-2 border-gray-300 focus:outline-none focus:ring-2 focus:ring-green-500 transition duration-200"
               required
             />
           </div>
 
           {/* Image Upload and Preview */}
-          <div className="flex flex-col items-center justify-center">
-            {imagePreview ? (
-              <div className="relative w-48 h-48 mb-4">
-                <img
+          <div className="mt-5 flex flex-col ">
+            <label className="text-xl font-bold ">อับโหลดรูปภาพ</label>
+            <input
+              id="fileInput"
+              type="file"
+              className="hidden"
+              accept="image/"
+              onChange={handleSelecImagePreview}
+            ></input>
+            <label
+              htmlFor="fileInput"
+              className="mt-2 bg-gray-200 hover:bg-gray-300 transition-all duration-300 text-gray-700 font-bold py-2 px-4 w-max rounded cursor-pointer"
+            >
+              เลือกไฟล์
+            </label>
+            {imagePreview && (
+              <div className="mt-4">
+                <Image
                   src={imagePreview}
                   alt="Image Preview"
-                  className="rounded-full w-full h-full object-cover border-4 border-green-500 shadow-lg"
+                  width={128}
+                  height={128}
+                  className="w-32 h-32 object-cover rounded-md border-4 border-purple-500 shadow-md"
+                  unoptimized={true}
                 />
               </div>
-            ) : (
-              <div className="w-48 h-48 mb-4 bg-gray-200 rounded-full flex items-center justify-center border-4 border-gray-400 shadow-inner text-gray-500">
-                ไม่มีรูปภาพ
-              </div>
             )}
-            <label
-              htmlFor="image-upload"
-              className="bg-green-500 text-white font-bold py-2 px-6 rounded-full cursor-pointer hover:bg-green-600 transition duration-300 ease-in-out transform hover:scale-105 flex items-center space-x-2 shadow-md"
-            >
-              <FaUpload />
-              <span>อัปโหลดรูปภาพ</span>
-            </label>
-            <input
-              id="image-upload"
-              type="file"
-              name="image"
-              accept="image/*"
-              onChange={handleImageChange}
-              className="hidden"
-            />
           </div>
         
           {/* Form Buttons */}
@@ -182,14 +183,13 @@ export default function AddFoodPage() {
               onClick={() => router.push('/dashboard')}
               className="w-full sm:w-auto bg-gray-500 text-white font-bold py-3 px-8 rounded-full shadow-lg hover:bg-gray-600 transition duration-300 ease-in-out transform hover:scale-105 flex items-center justify-center space-x-2"
             >
-              <FaChevronLeft />
               <span>ย้อนกลับ</span>
             </button>
             <button
               type="submit"
-              className="w-full sm:w-auto bg-blue-600 text-white font-bold py-3 px-8 rounded-full shadow-lg hover:bg-blue-700 transition duration-300 ease-in-out transform hover:scale-105 flex items-center justify-center space-x-2"
+
+              className="w-full sm:w-auto bg-blue-600 text-white font-bold py-3 px-8 rounded-full shadow-lg hover:bg-blue-700 transition duration-300 ease-in-out transform hover:scale-105 flex items-center justify-center space-x-2 "
             >
-              <FaSave />
               <span>บันทึก</span>
             </button>
           </div>

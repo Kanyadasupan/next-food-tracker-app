@@ -1,100 +1,187 @@
 "use client";
 
-import { useState, useEffect } from 'react';
-import { useRouter } from 'next/navigation';
-import { FaChevronLeft, FaSave, FaUpload } from 'react-icons/fa';
-
-/**
- * @fileoverview The Profile page component for the Food Tracker application.
- * This component allows users to view and edit their registration information.
- * It's built with Next.js using TypeScript and styled with Tailwind CSS.
- */
+import { useState, useEffect } from "react";
+import Link from "next/link";
+import Image from "next/image";
+import { supabase } from "@/lib/supabaseClient";
+import { useRouter } from "next/navigation";
 
 interface UserProfile {
-  name: string;
+  id: string;
   email: string;
-  gender: string;
-  profileImage: string;
+  full_name?: string;
+  gender?: string;
+  avatar_url?: string;
 }
 
-// Mock data to simulate fetching an existing user profile
-const mockUserProfile: UserProfile = {
-  name: 'สมชาย รักสุขภาพ',
-  email: 'somchai@example.com',
-  gender: 'ชาย',
-  profileImage: 'https://placehold.co/300x300/F0F0F0/000?text=Profile',
-};
+interface GenderOption {
+  value: string;
+  label: string;
+}
 
-export default function ProfilePage() {
+const genderOptions: GenderOption[] = [
+  { value: "male", label: "ชาย" },
+  { value: "female", label: "หญิง" },
+  { value: "other", label: "อื่นๆ" },
+];
+
+export default function Page() {
   const router = useRouter();
-  const [formData, setFormData] = useState<Omit<UserProfile, 'profileImage'>>({
-    name: '',
-    email: '',
-    gender: '',
-  });
-  const [imageFile, setImageFile] = useState<File | null>(null);
+  const [user, setUser] = useState<UserProfile | null>(null);
+  const [fullName, setFullName] = useState("");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [gender, setGender] = useState("");
+  const [image, setImage] = useState<File | null>(null);
   const [imagePreview, setImagePreview] = useState<string | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [isUpdating, setIsUpdating] = useState(false);
 
   useEffect(() => {
-    // Simulate fetching user profile data and populating the form
-    setFormData({
-      name: mockUserProfile.name,
-      email: mockUserProfile.email,
-      gender: mockUserProfile.gender,
-    });
-    setImagePreview(mockUserProfile.profileImage);
-  }, []);
+    const fetchUserProfile = async () => {
+      try {
+        // Get user data from localStorage
+        const userData = localStorage.getItem("user");
 
-  const genderOptions = [
-    { value: 'ชาย', label: 'ชาย' },
-    { value: 'หญิง', label: 'หญิง' },
-    { value: 'ไม่ระบุ', label: 'ไม่ระบุ' },
-  ];
+        if (!userData) {
+          alert("กรุณาเข้าสู่ระบบก่อน");
+          router.push("/login");
+          return;
+        }
+        const parsedUser = JSON.parse(userData);
 
-  /**
-   * Handles changes to the form input fields.
-   * @param {React.ChangeEvent<HTMLInputElement | HTMLSelectElement>} e The change event.
-   */
-  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
-    const { name, value } = e.target;
-    setFormData((prev) => ({ ...prev, [name]: value }));
-  };
+        // Get fresh user data from user_tb table
+        const { data: userProfile, error } = await supabase
+          .from("user_tb")
+          .select("*")
+          .eq("id", parsedUser.id)
+          .single();
 
-  /**
-   * Handles the change event for the image file input.
-   * @param {React.ChangeEvent<HTMLInputElement>} e The file input change event.
-   */
+        if (error) {
+          console.error("Error fetching user profile:", error);
+          alert("เกิดข้อผิดพลาดในการโหลดข้อมูลผู้ใช้");
+          router.push("/login");
+          return;
+        }
+
+        if (userProfile) {
+          const profile = {
+            id: userProfile.id,
+            email: userProfile.email,
+            full_name: userProfile.fullname,
+            gender: userProfile.gender,
+            avatar_url: userProfile.user_image_url,
+          };
+
+          setUser(profile);
+          setFullName(profile.full_name ?? "");
+          setEmail(profile.email ?? "");
+          setGender(profile.gender ?? "");
+          setImagePreview(profile.avatar_url ?? null);
+        }
+      } catch (error) {
+        console.error("Error:", error);
+        alert("เกิดข้อผิดพลาดในการโหลดข้อมูล");
+        router.push("/login");
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    fetchUserProfile();
+  }, [router]);
+
   const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
+    const file = e.target.files?.[0] || null;
+    setImage(file);
     if (file) {
-      setImageFile(file);
       const reader = new FileReader();
       reader.onloadend = () => {
         setImagePreview(reader.result as string);
       };
       reader.readAsDataURL(file);
     } else {
-      setImageFile(null);
       setImagePreview(null);
     }
   };
 
-  /**
-   * Handles the form submission (currently a placeholder).
-   * @param {React.FormEvent<HTMLFormElement>} e The form submit event.
-   */
-  const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
+  const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
-    // TODO: Implement logic to save the updated user profile to a database.
-    const updatedProfile = {
-      ...formData,
-      profileImage: imagePreview || '',
-    };
-    console.log('Updating user profile:', updatedProfile);
-    console.log('New image file:', imageFile);
-    
-    // Redirect to the dashboard after submission
-    router.push('/dashboard');
+    setIsUpdating(true);
+
+    try {
+      if (!user) {
+        alert("ไม่พบข้อมูลผู้ใช้");
+        return;
+      }
+
+      //* Upload new image if selected
+      let avatar_url = imagePreview;
+      if (image) {
+        const new_image_file_name = `${Date.now()}-${image.name}`;
+        const { error: uploadError } = await supabase.storage
+          .from("user_bk")
+          .upload(new_image_file_name, image);
+
+        if (uploadError) {
+          alert("พบปัญหาในการอัปโหลดรูปภาพ");
+          console.log(uploadError.message);
+          return;
+        } else {
+          const { data } = await supabase.storage
+            .from("user_bk")
+            .getPublicUrl(new_image_file_name);
+          avatar_url = data.publicUrl;
+        }
+      }
+
+      // Update user profile in user_tb table
+      const updateData: {
+        email: string;
+        fullname: string;
+        gender: string;
+        user_image_url: string | null;
+        password?: string;
+      } = {
+        email: email,
+        fullname: fullName,
+        gender: gender,
+        user_image_url: avatar_url,
+      };
+
+      // Only update password if provided
+      if (password) {
+        updateData.password = password;
+      }
+
+      const { error: updateError } = await supabase
+        .from("user_tb")
+        .update(updateData)
+        .eq("id", user.id);
+
+      if (updateError) {
+        alert("พบปัญหาในการอัปเดตข้อมูลโปรไฟล์");
+        console.log(updateError.message);
+        return;
+      }
+
+      // Update localStorage with new data
+      const updatedUserData = {
+        id: user.id,
+        fullname: fullName,
+        email: user.email,
+        gender: gender,
+        user_image_url: avatar_url,
+      };
+      localStorage.setItem("user", JSON.stringify(updatedUserData));
+      alert("อัปเดตข้อมูลโปรไฟล์สำเร็จ");
+      router.push("/dashboard");
+    } catch (error) {
+      console.error("Update profile error:", error);
+      alert("เกิดข้อผิดพลาดในการอัปเดตข้อมูลโปรไฟล์");
+    } finally {
+      setIsUpdating(false);
+    }
   };
 
   return (
@@ -107,15 +194,19 @@ export default function ProfilePage() {
         <form onSubmit={handleSubmit} className="space-y-6">
           {/* Full Name Input */}
           <div>
-            <label className="block text-gray-700 font-semibold mb-2" htmlFor="name">
+            <label
+              className="block text-gray-700 font-semibold mb-2"
+              htmlFor="name"
+            >
               ชื่อ-นามสกุล
             </label>
             <input
+              disabled={isLoading}
               type="text"
               id="name"
               name="name"
-              value={formData.name}
-              onChange={handleInputChange}
+              value={fullName}
+              onChange={(e) => setFullName(e.target.value)}
               className="w-full px-4 py-3 rounded-lg border-2 border-gray-300 focus:outline-none focus:ring-2 focus:ring-indigo-500 transition duration-200"
               placeholder="กรุณาป้อนชื่อ-นามสกุล"
               required
@@ -124,15 +215,18 @@ export default function ProfilePage() {
 
           {/* Email Input */}
           <div>
-            <label className="block text-gray-700 font-semibold mb-2" htmlFor="email">
+            <label
+              className="block text-gray-700 font-semibold mb-2"
+              htmlFor="email"
+            >
               อีเมล
             </label>
             <input
               type="email"
               id="email"
               name="email"
-              value={formData.email}
-              onChange={handleInputChange}
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
               className="w-full px-4 py-3 rounded-lg border-2 border-gray-300 focus:outline-none focus:ring-2 focus:ring-indigo-500 transition duration-200"
               placeholder="กรุณาป้อนอีเมล"
               required
@@ -141,14 +235,17 @@ export default function ProfilePage() {
 
           {/* Gender Selection */}
           <div>
-            <label className="block text-gray-700 font-semibold mb-2" htmlFor="gender">
+            <label
+              className="block text-gray-700 font-semibold mb-2"
+              htmlFor="gender"
+            >
               เพศ
             </label>
             <select
               id="gender"
               name="gender"
-              value={formData.gender}
-              onChange={handleInputChange}
+              value={gender}
+              onChange={(e) => setGender(e.target.value)}
               className="w-full px-4 py-3 rounded-lg border-2 border-gray-300 focus:outline-none focus:ring-2 focus:ring-indigo-500 transition duration-200"
               required
             >
@@ -164,9 +261,11 @@ export default function ProfilePage() {
           <div className="flex flex-col items-center justify-center">
             {imagePreview ? (
               <div className="relative w-48 h-48 mb-4">
-                <img
+                <Image
                   src={imagePreview}
                   alt="Image Preview"
+                  width={192}
+                  height={192}
                   className="rounded-full w-full h-full object-cover border-4 border-indigo-500 shadow-lg"
                 />
               </div>
@@ -179,7 +278,6 @@ export default function ProfilePage() {
               htmlFor="image-upload"
               className="bg-indigo-500 text-white font-bold py-2 px-6 rounded-full cursor-pointer hover:bg-indigo-600 transition duration-300 ease-in-out transform hover:scale-105 flex items-center space-x-2 shadow-md"
             >
-              <FaUpload />
               <span>อัปโหลดรูปภาพ</span>
             </label>
             <input
@@ -196,17 +294,15 @@ export default function ProfilePage() {
           <div className="flex flex-col sm:flex-row justify-between items-center space-y-4 sm:space-y-0 sm:space-x-4 pt-4">
             <button
               type="button"
-              onClick={() => router.push('/dashboard')}
+              onClick={() => router.push("/dashboard")}
               className="w-full sm:w-auto bg-gray-500 text-white font-bold py-3 px-8 rounded-full shadow-lg hover:bg-gray-600 transition duration-300 ease-in-out transform hover:scale-105 flex items-center justify-center space-x-2"
             >
-              <FaChevronLeft />
               <span>ย้อนกลับ</span>
             </button>
             <button
               type="submit"
               className="w-full sm:w-auto bg-blue-600 text-white font-bold py-3 px-8 rounded-full shadow-lg hover:bg-blue-700 transition duration-300 ease-in-out transform hover:scale-105 flex items-center justify-center space-x-2"
             >
-              <FaSave />
               <span>บันทึก</span>
             </button>
           </div>

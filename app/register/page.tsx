@@ -1,35 +1,99 @@
 "use client";
 
-import { useState } from 'react';
-import Link from 'next/link';
-import Image from 'next/image';
-import router from 'next/router';
-import { FaUpload, FaChevronLeft, FaSave } from 'react-icons/fa';
+import React, { useState } from "react";
+import Link from "next/link";
+import Image from "next/image";
+import { supabase } from "@/lib/supabaseClient";
+import { useRouter } from "next/navigation";
 
-
-export default function RegisterPage() {
-  const [imageFile, setImageFile] = useState<File | null>(null);
+export default function Page() {
+  const [fullName, setFullName] = useState("");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [gender, setGender] = useState("");
+  const [image, setImage] = useState<File | null>(null);
   const [imagePreview, setImagePreview] = useState<string | null>(null);
+  const router = useRouter();
 
   const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
+    const file = e.target.files?.[0] || null;
+    setImage(file);
     if (file) {
-      setImageFile(file);
+      // Validate file type
+      if (!file.type.startsWith("image/")) {
+        alert("Please select a valid image file");
+        return;
+      }
+
+      // Validate file size (max 5MB)
+      if (file.size > 5 * 1024 * 1024) {
+        alert("Image size should be less than 5MB");
+        return;
+      }
+
       const reader = new FileReader();
       reader.onloadend = () => {
         setImagePreview(reader.result as string);
       };
+      reader.onerror = () => {
+        alert("Error reading the file");
+        setImagePreview(null);
+      };
       reader.readAsDataURL(file);
     } else {
-      setImageFile(null);
       setImagePreview(null);
     }
   };
 
-  const handleSubmit = (e: { preventDefault: () => void; }) => {
+  const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
-    console.log('Form data:', FormData);
+    //* upload image to supabase storage
+    let image_url = "";
+    if (image) {
+      // named new image file
+      const new_image_file_name = `${Date.now()}-${image.name}`;
+      // upload it
+      const { data, error } = await supabase.storage
+        .from("user_bk")
+        .upload(new_image_file_name, image);
+      // after upload, check if the upload is successful
+      if (error) {
+        alert("พบปัญหาในการอัปโหลดรูปภาพ");
+        console.log(error.message);
+      } else {
+        const { data } = await supabase.storage
+          .from("user_bk")
+          .getPublicUrl(new_image_file_name);
+        image_url = data.publicUrl;
+      }
+    }
 
+    //* submit form data to supabase
+    const { data, error } = await supabase.from("user_tb").insert({
+      email: email,
+      password: password,
+      gender: gender,
+      user_image_url: image_url,
+      fullname: fullName,
+    });
+
+    // after submit, check if the submission is successful
+    if (error) {
+      alert("พบปัญหาในการลงทะเบียน");
+      console.log(error.message);
+      return;
+    } else {
+      alert("ลงทะเบียนสำเร็จ");
+      // clear form
+      setFullName("");
+      setEmail("");
+      setPassword("");
+      setGender("");
+      setImage(null);
+      setImagePreview(null);
+      // redirect to login page
+      router.push("/login");
+    }
   };
 
   return (
@@ -40,9 +104,11 @@ export default function RegisterPage() {
         </h1>
 
         <form onSubmit={handleSubmit} className="space-y-6">
-          
           <div>
-            <label className="block text-gray-700 font-semibold mb-2" htmlFor="fullname">
+            <label
+              className="block text-gray-700 font-semibold mb-2"
+              htmlFor="fullname"
+            >
               ชื่อ-สกุล
             </label>
             <input
@@ -52,12 +118,17 @@ export default function RegisterPage() {
               className="w-full px-4 py-3 rounded-lg border-2 border-gray-300 focus:outline-none focus:ring-2 focus:ring-indigo-500 transition duration-200"
               placeholder="กรุณาป้อนชื่อและนามสกุล"
               required
+              value={fullName}
+              onChange={(e) => setFullName(e.target.value)}
             />
           </div>
 
           {/* Email Input */}
           <div>
-            <label className="block text-gray-700 font-semibold mb-2" htmlFor="email">
+            <label
+              className="block text-gray-700 font-semibold mb-2"
+              htmlFor="email"
+            >
               อีเมล
             </label>
             <input
@@ -67,12 +138,17 @@ export default function RegisterPage() {
               className="w-full px-4 py-3 rounded-lg border-2 border-gray-300 focus:outline-none focus:ring-2 focus:ring-indigo-500 transition duration-200"
               placeholder="กรุณาป้อนอีเมล"
               required
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
             />
           </div>
 
           {/* Password Input */}
           <div>
-            <label className="block text-gray-700 font-semibold mb-2" htmlFor="password">
+            <label
+              className="block text-gray-700 font-semibold mb-2"
+              htmlFor="password"
+            >
               รหัสผ่าน
             </label>
             <input
@@ -82,14 +158,19 @@ export default function RegisterPage() {
               className="w-full px-4 py-3 rounded-lg border-2 border-gray-300 focus:outline-none focus:ring-2 focus:ring-indigo-500 transition duration-200"
               placeholder="กรุณาป้อนรหัสผ่าน"
               required
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
             />
           </div>
 
           {/* Gender and Image Section */}
-            <div className=" md:grid-cols-2 gap-6">
+          <div className=" md:grid-cols-2 gap-6">
             {/* Gender Select */}
             <div>
-              <label className="block text-gray-700 font-semibold mb-2" htmlFor="gender">
+              <label
+                className="block text-gray-700 font-semibold mb-2"
+                htmlFor="gender"
+              >
                 เพศ
               </label>
               <select
@@ -97,46 +178,46 @@ export default function RegisterPage() {
                 name="gender"
                 className="w-full px-4 py-3 rounded-lg border-2 border-gray-300 focus:outline-none focus:ring-2 focus:ring-indigo-500 transition duration-200"
                 required
+                value={gender}
+                onChange={(e) => setGender(e.target.value)}
               >
-                <option value="">เลือกเพศ</option>
+                <option value="" hidden>
+                  เลือกเพศ
+                </option>
                 <option value="male">ชาย</option>
                 <option value="female">หญิง</option>
                 <option value="other">อื่น ๆ</option>
               </select>
             </div>
-            </div>
-        
+          </div>
 
-           <div className="flex flex-col items-center justify-center">
-                       {imagePreview ? (
-                         <div className="relative w-48 h-48 mb-4">
-                           <img
-                             src={imagePreview}
-                             alt="Image Preview"
-                             className="rounded-full w-full h-full object-cover border-4 border-green-500 shadow-lg"
-                           />
-                         </div>
-                       ) : (
-                         <div className="w-48 h-48 mb-4 bg-gray-200 rounded-full flex items-center justify-center border-4 border-gray-400 shadow-inner text-gray-500">
-                           ไม่มีรูปภาพ
-                         </div>
-                       )}
-                       <label
-                         htmlFor="image-upload"
-                         className="bg-green-500 text-white font-bold py-2 px-6 rounded-full cursor-pointer hover:bg-green-600 transition duration-300 ease-in-out transform hover:scale-105 flex items-center space-x-2 shadow-md"
-                       >
-                         <FaUpload />
-                         <span>อัปโหลดรูปภาพ</span>
-                       </label>
-                       <input
-                         id="image-upload"
-                         type="file"
-                         name="image"
-                         accept="image/*"
-                         onChange={handleImageChange}
-                         className="hidden"
-                       />
-                     </div>
+          <div className="flex flex-col items-center justify-center">
+            {imagePreview && (
+              <div className="mt-3">
+                <Image
+                src={imagePreview}
+                alt="Image Preview"
+                width={128}
+                height={128}
+                className="w-32 h-32 object-cover rounded-full border-4 border-purple-500 shadow-md"
+                unoptimized={true}
+              />
+              </div>
+            )}
+            <label
+              htmlFor="image-upload"
+              className="mt-3 bg-green-500 text-white font-bold py-2 px-6 rounded-full cursor-pointer hover:bg-green-600 transition duration-300 ease-in-out transform hover:scale-105 flex items-center space-x-2 shadow-md"
+            >
+              <span>อัปโหลดรูปภาพ</span>
+            </label>
+            <input
+              id="image-upload"
+              type="file"
+              accept="image/"
+              className="hidden"
+              onChange={handleImageChange}
+            />
+          </div>
 
           {/* Register Button */}
           <button
@@ -149,7 +230,7 @@ export default function RegisterPage() {
 
         {/* Login Link */}
         <div className="mt-6 text-center text-gray-600">
-          Already have an account?{' '}
+          Already have an account?{" "}
           <Link href="/login">
             <span className="text-indigo-600 hover:text-indigo-800 font-semibold transition duration-200">
               Login here
@@ -158,6 +239,7 @@ export default function RegisterPage() {
         </div>
       </div>
     </div>
-    
+
   );
+
 }

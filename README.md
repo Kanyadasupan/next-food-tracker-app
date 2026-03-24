@@ -60,5 +60,5 @@
 * `/lib/supabaseClient.ts` - การตั้งค่าการเชื่อมต่อกับ Supabase
 
 ---
-**Developed by [Nick](https://github.com/KanyadaSupan)**
-*Student at Siam University | Digital Technology and Innovation*
+**Developed by [Kanyada](https://github.com/KanyadaSupan)**
+*Student at Southeast Asia University | Digital Technology and Innovation*
